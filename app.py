@@ -4,15 +4,43 @@ import google.generativeai as genai
 # ページ設定
 st.set_page_config(page_title="My Private Gemini", layout="centered")
 
-# サイドバーでモデル選択（3.0 Proなどを指定可能に）
+# --- ここから：パスワード認証機能 ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # パスワードを保持しない
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # 初回アクセス時
+        st.text_input("パスワードを入力してください", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # パスワード間違い
+        st.text_input("パスワードを入力してください", type="password", on_change=password_entered, key="password")
+        st.error("😕 パスワードが違います")
+        return False
+    else:
+        # 正解
+        return True
+
+if not check_password():
+    st.stop()  # パスワードが合わない限り、ここより下のコードは実行されない
+# --- ここまで：パスワード認証機能 ---
+
+# 以下、チャットアプリ本体
 st.sidebar.title("設定")
 model_name = st.sidebar.selectbox(
     "モデル選択",
-    ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-3-pro-preview"], # 使いたいモデル名をここに追記
-    index=2 # デフォルトをGemini 3.0に
+    ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-3-pro-preview"],
+    index=2
 )
 
-# APIキーの読み込み（設定画面から読み込む安全な方法）
+# APIキーの読み込み
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
 else:
@@ -21,40 +49,35 @@ else:
 
 genai.configure(api_key=api_key)
 
-# チャット履歴の初期化
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# タイトル表示
 st.title(f"🤖 Private Gemini ({model_name})")
 st.caption("会社PC閲覧用：機密情報は入力禁止")
 
-# 過去の履歴を表示
+# ログアウトボタン（簡易版）
+if st.sidebar.button("ログアウト"):
+    st.session_state["password_correct"] = False
+    st.rerun()
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 入力フォーム
 if prompt := st.chat_input("ここにメッセージを入力..."):
-    # ユーザーの入力を表示
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # AIの返答を生成
     with st.chat_message("assistant"):
         try:
-            # モデルの準備
             model = genai.GenerativeModel(model_name)
-            
-            # 履歴を含めて送信（文脈を理解させる）
             chat_history = [
                 {"role": m["role"], "parts": [m["content"]]} 
-                for m in st.session_state.messages[:-1] # 今回の入力を除く過去ログ
+                for m in st.session_state.messages[:-1]
             ]
             chat = model.start_chat(history=chat_history)
             
-            # ストリーミング表示（文字がパラパラ出るやつ）
             response_container = st.empty()
             full_response = ""
             response = chat.send_message(prompt, stream=True)
@@ -64,7 +87,6 @@ if prompt := st.chat_input("ここにメッセージを入力..."):
                     full_response += chunk.text
                     response_container.markdown(full_response)
             
-            # 履歴に保存
             st.session_state.messages.append({"role": "model", "content": full_response})
 
         except Exception as e:
