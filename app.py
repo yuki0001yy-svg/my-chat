@@ -55,7 +55,7 @@ def get_transcript(url):
 st.sidebar.title("設定")
 model_name = st.sidebar.selectbox(
     "モデル選択",
-    ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-3-pro-preview"],
+    ["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.1-pro-preview"],
     index=2
 )
 
